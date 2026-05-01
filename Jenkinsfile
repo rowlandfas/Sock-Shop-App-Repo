@@ -15,6 +15,9 @@ pipeline {
     GIT_REPO_URL = "https://github.com/CloudHight/Sock-Shop-App-Repo.git"
     STAGE_BRANCH = "stage"
     MAIN_BRANCH = "main"
+    APP_DOMAIN_URL = credentials('stage-app-domain-url')
+    SLACK_CHANNEL = credentials('slack-channel')
+    SLACK_TEAM_DOMAIN = credentials('slack-team-domain')
   }
   
   stages {
@@ -50,7 +53,10 @@ pipeline {
     
     stage ('Slack Notification for stage') {
       steps {
-        slackSend channel: 'Cloudhight', message: 'New Stage Deployment', teamDomain: '09-february-2026-sock-shop-kubernetes-project', tokenCredentialId: 'slack'
+        slackSend channel: env.SLACK_CHANNEL,
+                  message: "New Stage Deployment completed for ${env.APP_DOMAIN_URL}",
+                  teamDomain: env.SLACK_TEAM_DOMAIN,
+                  tokenCredentialId: 'slack'
       }
     }
     
@@ -59,7 +65,13 @@ pipeline {
         sh '''
           sleep 30s
           chmod 777 $(pwd)
-          docker run -v $(pwd):/zap/wrk/:rw -t ghcr.io/zaproxy/zaproxy:stable zap-baseline.py -t https://stage.seyi-prj2025.space -g gen.conf -r testreport.html || true
+    
+          docker run -v $(pwd):/zap/wrk/:rw \
+            -t ghcr.io/zaproxy/zaproxy:stable \
+            zap-baseline.py \
+            -t "$APP_DOMAIN_URL" \
+            -g gen.conf \
+            -r testreport.html || true
         '''
       }
     }
@@ -140,7 +152,10 @@ pipeline {
     
     stage ('Slack Notification for prod') {
       steps {
-        slackSend channel: 'Cloudhight', message: 'New Production Deployment', teamDomain: '09-february-2026-sock-shop-kubernetes-project', tokenCredentialId: 'slack'
+        slackSend channel: env.SLACK_CHANNEL,
+                  message: "New Production Deployment completed",
+                  teamDomain: env.SLACK_TEAM_DOMAIN,
+                  tokenCredentialId: 'slack'
       }
     }
   }
