@@ -12,7 +12,7 @@ pipeline {
     APP_REPO_NAME = "Sock-Shop-App-Repo"
     PORT = "30001"
     DEPLOYMENT_MANIFEST = "complete.yaml"
-    GIT_REPO_URL = "https://github.com/CloudHight/Sock-Shop-App-Repo.git"
+    GIT_REPO_URL = "https://github.com/rowlandfas/Sock-Shop-App-Repo.git"
     STAGE_BRANCH = "stage"
     MAIN_BRANCH = "main"
     APP_DOMAIN_URL = credentials('stage-app-domain-url')
