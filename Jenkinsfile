@@ -16,7 +16,7 @@ pipeline {
     STAGE_BRANCH = "stage"
     MAIN_BRANCH = "main"
     APP_DOMAIN_URL = credentials('stage-app-domain-url')
-    SLACK_CHANNEL = credentials('slack-channel')
+    SLACK_CHANNEL = credentials('slack-cred')
     SLACK_TEAM_DOMAIN = credentials('slack-team-domain')
   }
   
