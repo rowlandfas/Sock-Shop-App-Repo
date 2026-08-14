@@ -55,6 +55,23 @@ pipeline {
               fi
             '''
 
+          // Validate both SSH key credentials before sshagent loads them,
+          // so a malformed key fails here with the specific credential ID
+          // named, instead of surfacing as a generic "ssh-add ... invalid
+          // format" error against an anonymous temp-file path.
+          withCredentials([
+            sshUserPrivateKey(credentialsId: 'bastion-key', keyFileVariable: 'BASTION_KEY_FILE'),
+            sshUserPrivateKey(credentialsId: 'ansible-key', keyFileVariable: 'ANSIBLE_KEY_FILE')
+          ]) {
+            sh '''
+                echo "Validating bastion-key credential..."
+                ssh-keygen -y -f "$BASTION_KEY_FILE" > /dev/null || { echo "ERROR: credential 'bastion-key' is not a valid SSH private key"; exit 1; }
+
+                echo "Validating ansible-key credential..."
+                ssh-keygen -y -f "$ANSIBLE_KEY_FILE" > /dev/null || { echo "ERROR: credential 'ansible-key' is not a valid SSH private key"; exit 1; }
+              '''
+          }
+
           // SSH through the tunnel to Ansible server on port 22
           sshagent(['bastion-key', 'ansible-key']) {
             sh '''
@@ -184,6 +201,19 @@ pipeline {
                   exit 1
               fi
             '''
+
+          withCredentials([
+            sshUserPrivateKey(credentialsId: 'bastion-key', keyFileVariable: 'BASTION_KEY_FILE'),
+            sshUserPrivateKey(credentialsId: 'ansible-key', keyFileVariable: 'ANSIBLE_KEY_FILE')
+          ]) {
+            sh '''
+                echo "Validating bastion-key credential..."
+                ssh-keygen -y -f "$BASTION_KEY_FILE" > /dev/null || { echo "ERROR: credential 'bastion-key' is not a valid SSH private key"; exit 1; }
+
+                echo "Validating ansible-key credential..."
+                ssh-keygen -y -f "$ANSIBLE_KEY_FILE" > /dev/null || { echo "ERROR: credential 'ansible-key' is not a valid SSH private key"; exit 1; }
+              '''
+          }
 
           sshagent(['bastion-key', 'ansible-key']) {
             sh '''
