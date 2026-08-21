@@ -39,10 +39,16 @@ pipeline {
 
               echo $! > /tmp/ssm-session-stage.pid
 
-              echo "Waiting for port 9999..."
+              # A TCP accept on 9999 only means the local end of the SSM
+              # forwarder is up, not that the data channel to the bastion is
+              # relaying yet. Wait for the plugin's own readiness message too,
+              # otherwise the first ssh through the tunnel can land in that
+              # gap and die with "Temporary failure in name resolution".
+              echo "Waiting for SSM tunnel on port 9999..."
               for i in $(seq 1 30); do
-                  if bash -c "cat < /dev/null > /dev/tcp/localhost/9999" 2>/dev/null; then
-                      echo "Port 9999 is ready."
+                  if bash -c "cat < /dev/null > /dev/tcp/localhost/9999" 2>/dev/null \
+                      && grep -q "Waiting for connections" /tmp/ssm-session-stage.log 2>/dev/null; then
+                      echo "SSM tunnel is ready."
                       break
                   fi
                   sleep 1
@@ -72,13 +78,26 @@ pipeline {
               '''
           }
 
-          // SSH through the tunnel to Ansible server on port 22
+          // SSH through the tunnel to Ansible server on port 22.
+          // Even once the tunnel accepts connections, the first hop through
+          // it can still transiently fail while the SSM data channel settles,
+          // so retry a few times before giving up. ansible-playbook is safe
+          // to re-run (git checkout + kubectl apply are idempotent).
           sshagent(['bastion-key', 'ansible-key']) {
             sh '''
-                ssh -o StrictHostKeyChecking=no \
-                    -o ProxyCommand="ssh -W %h:%p -o StrictHostKeyChecking=no ubuntu@localhost -p 9999" \
-                    ubuntu@${ANSIBLE_IP} \
-                    "ansible-playbook /etc/ansible/playbooks/stage.yml"
+                for i in $(seq 1 5); do
+                    if ssh -o StrictHostKeyChecking=no \
+                        -o ConnectTimeout=10 \
+                        -o ProxyCommand="ssh -W %h:%p -o StrictHostKeyChecking=no -o ConnectTimeout=10 ubuntu@localhost -p 9999" \
+                        ubuntu@${ANSIBLE_IP} \
+                        "ansible-playbook /etc/ansible/playbooks/stage.yml"; then
+                        exit 0
+                    fi
+                    echo "SSH through bastion tunnel failed (attempt $i/5), retrying in 5s..."
+                    sleep 5
+                done
+                echo "ERROR: Could not reach Ansible host through bastion tunnel after 5 attempts."
+                exit 1
               '''
           }
         }
@@ -186,10 +205,16 @@ pipeline {
 
               echo $! > /tmp/ssm-session-prod.pid
 
-              echo "Waiting for port 9999..."
+              # A TCP accept on 9999 only means the local end of the SSM
+              # forwarder is up, not that the data channel to the bastion is
+              # relaying yet. Wait for the plugin's own readiness message too,
+              # otherwise the first ssh through the tunnel can land in that
+              # gap and die with "Temporary failure in name resolution".
+              echo "Waiting for SSM tunnel on port 9999..."
               for i in $(seq 1 30); do
-                  if bash -c "cat < /dev/null > /dev/tcp/localhost/9999" 2>/dev/null; then
-                      echo "Port 9999 is ready."
+                  if bash -c "cat < /dev/null > /dev/tcp/localhost/9999" 2>/dev/null \
+                      && grep -q "Waiting for connections" /tmp/ssm-session-prod.log 2>/dev/null; then
+                      echo "SSM tunnel is ready."
                       break
                   fi
                   sleep 1
@@ -217,10 +242,19 @@ pipeline {
 
           sshagent(['bastion-key', 'ansible-key']) {
             sh '''
-                ssh -o StrictHostKeyChecking=no \
-                    -o ProxyCommand="ssh -W %h:%p -o StrictHostKeyChecking=no ubuntu@localhost -p 9999" \
-                    ubuntu@${ANSIBLE_IP} \
-                    "ansible-playbook /etc/ansible/playbooks/prod.yml"
+                for i in $(seq 1 5); do
+                    if ssh -o StrictHostKeyChecking=no \
+                        -o ConnectTimeout=10 \
+                        -o ProxyCommand="ssh -W %h:%p -o StrictHostKeyChecking=no -o ConnectTimeout=10 ubuntu@localhost -p 9999" \
+                        ubuntu@${ANSIBLE_IP} \
+                        "ansible-playbook /etc/ansible/playbooks/prod.yml"; then
+                        exit 0
+                    fi
+                    echo "SSH through bastion tunnel failed (attempt $i/5), retrying in 5s..."
+                    sleep 5
+                done
+                echo "ERROR: Could not reach Ansible host through bastion tunnel after 5 attempts."
+                exit 1
               '''
           }
         }
