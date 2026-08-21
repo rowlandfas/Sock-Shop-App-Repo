@@ -83,15 +83,20 @@ pipeline {
           // it can still transiently fail while the SSM data channel settles,
           // so retry a few times before giving up. ansible-playbook is safe
           // to re-run (git checkout + kubectl apply are idempotent).
-          // Terraform destroy/apply recreates this instance with a fresh host
-          // key but often reuses the same private IP, so a stale known_hosts
-          // entry from a previous instance causes a hard "REMOTE HOST
+          // Terraform destroy/apply can recreate the ansible instance (whose
+          // key is cached under its own IP) and, since the bastion sits
+          // behind an autoscaling group, the bastion too (whose key is
+          // cached under "[localhost]:9999", the local SSM tunnel address
+          // every session connects through regardless of which real bastion
+          // instance answers). Either stale entry causes a hard "REMOTE HOST
           // IDENTIFICATION HAS CHANGED" refusal that StrictHostKeyChecking=no
-          // alone does not override. Purge just that one cached entry first
-          // rather than disabling host-key checking outright.
+          // does not override for an existing mismatched entry. Purge both
+          // specific entries first rather than disabling host-key checking
+          // outright.
           sshagent(['bastion-key', 'ansible-key']) {
             sh '''
                 ssh-keygen -R "${ANSIBLE_IP}" 2>/dev/null || true
+                ssh-keygen -R "[localhost]:9999" 2>/dev/null || true
 
                 for i in $(seq 1 5); do
                     if ssh -o StrictHostKeyChecking=no \
@@ -251,6 +256,7 @@ pipeline {
           sshagent(['bastion-key', 'ansible-key']) {
             sh '''
                 ssh-keygen -R "${ANSIBLE_IP}" 2>/dev/null || true
+                ssh-keygen -R "[localhost]:9999" 2>/dev/null || true
 
                 for i in $(seq 1 5); do
                     if ssh -o StrictHostKeyChecking=no \
